@@ -1,8 +1,8 @@
 package main
 
 import (
-//	"fmt"
-//	"os"
+	"fmt"
+	"os"
 )
 
 // Condition flags for conditional register
@@ -51,6 +51,8 @@ type ALU struct {
 	PCReg   uint16    // program counter register
 
 	Memory [65536]uint16 // memory
+
+	Running bool
 }
 
 func (a *ALU) EmulateInstruction() {
@@ -95,7 +97,45 @@ func (a *ALU) EmulateInstruction() {
 
 func (a *ALU) handleTRAP(instr uint16) {
 	switch trapVector := subBits(instr, 7, 0); trapVector {
-	//TODO
+	case TrapGETC:
+		c, err := GetChar()
+		if err != nil {
+			panic(err)
+		}
+		a.Reg[0] = c
+	case TrapOUT:
+		fmt.Printf("%c", rune(a.Reg[0]))
+	case TrapPUTS:
+		address := a.Reg[0]
+		var chr uint16
+		var i uint16
+		for ok := true; ok; ok = (chr != 0x0) {
+			chr = a.Memory[address+i] & 0xFFFF
+			fmt.Printf("%c", rune(chr))
+			i++
+		}
+/*		fmt.Println("TrapPUTS")
+		for i := a.Reg[0]; a.Memory[i] != 0; i++ {
+			fmt.Printf("%c", rune(a.Memory[i]))
+		}*/
+	case TrapIN:
+		fmt.Print("Enter a character: ")
+		c, err := GetChar()
+		if err != nil {
+			panic(err)
+		}
+		a.Reg[0] = c
+	case TrapPUTSP:
+		for i := a.Reg[0]; a.Memory[i] != 0; i++ {
+			r1 := rune(a.Memory[i] & 0xFF)
+			fmt.Printf("%c", r1)
+			r2 := rune(a.Memory[i] >> 8)
+			if r2 != 0 {
+				fmt.Printf("%c", r2)
+			}
+		}
+	case TrapHALT:
+		a.Running = false
 	}
 }
 
@@ -229,4 +269,23 @@ func (a *ALU) handleSTR(instr uint16) {
 	a.Memory[a.Reg[baseR]+signExtend(offset, 6)] = a.Reg[sr]
 }
 
-func main() {}
+func main() {
+	args := os.Args[1:]
+	if len(args) == 0 {
+		fmt.Println("No obj file provided!")
+		return
+	}
+
+	a := ALU{
+		PCReg:   PCStart,
+		Running: true,
+	}
+
+	if err := Load(&a.Memory, args[0]); err != nil {
+		panic(err)
+	}
+
+	for a.Running {
+		a.EmulateInstruction()
+	}
+}
