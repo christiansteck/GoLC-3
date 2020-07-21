@@ -12,8 +12,13 @@ const (
 	CondNEG
 )
 
-// Starting position of pc register
-const PCStart = 0x3000
+// Memory addresses
+const (
+	PCStart = 0x3000 // program counter
+
+	KBSR = 0xFE00 // keyboard status register
+	KBDR = 0xFE02 // keyboard data register
+)
 
 // Instructions
 const (
@@ -98,11 +103,14 @@ func (a *ALU) EmulateInstruction() {
 func (a *ALU) handleTRAP(instr uint16) {
 	switch trapVector := subBits(instr, 7, 0); trapVector {
 	case TrapGETC:
-		c, err := GetChar()
-		if err != nil {
-			panic(err)
+		// block until new character received
+		for {
+			if (a.Memory[KBSR] & 0x8000) != 0x0 {
+				break
+			}
 		}
-		a.Reg[0] = c
+		a.Reg[0] = a.Memory[KBDR]
+		a.Memory[KBSR] &= 0x7FFF
 	case TrapOUT:
 		fmt.Printf("%c", rune(a.Reg[0]))
 	case TrapPUTS:
@@ -114,17 +122,17 @@ func (a *ALU) handleTRAP(instr uint16) {
 			fmt.Printf("%c", rune(chr))
 			i++
 		}
-/*		fmt.Println("TrapPUTS")
-		for i := a.Reg[0]; a.Memory[i] != 0; i++ {
-			fmt.Printf("%c", rune(a.Memory[i]))
-		}*/
 	case TrapIN:
 		fmt.Print("Enter a character: ")
-		c, err := GetChar()
-		if err != nil {
-			panic(err)
+		// block until new character received
+		for {
+			if (a.Memory[KBSR] & 0x8000) != 0x0 {
+				break
+			}
 		}
-		a.Reg[0] = c
+		a.Reg[0] = a.Memory[KBDR]
+		a.Memory[KBSR] &= 0x7FFF
+		fmt.Printf("%c", rune(a.Reg[0]))
 	case TrapPUTSP:
 		for i := a.Reg[0]; a.Memory[i] != 0; i++ {
 			r1 := rune(a.Memory[i] & 0xFF)
@@ -153,7 +161,7 @@ func (a *ALU) handleBR(instr uint16) {
 	pcOffset := subBits(instr, 8, 0)
 	flag := subBits(instr, 11, 9)
 
-	if flag == a.CondReg {
+	if flag & a.CondReg != 0 {
 		a.PCReg += signExtend(pcOffset, 9)
 	}
 }
@@ -276,6 +284,8 @@ func main() {
 		return
 	}
 
+	disableInputBuffering()
+
 	a := ALU{
 		PCReg:   PCStart,
 		Running: true,
@@ -284,6 +294,8 @@ func main() {
 	if err := Load(&a.Memory, args[0]); err != nil {
 		panic(err)
 	}
+
+	go processInput(&a)
 
 	for a.Running {
 		a.EmulateInstruction()
