@@ -57,6 +57,8 @@ type ALU struct {
 
 	Memory [65536]uint16 // memory
 
+	KBSRChan chan struct{} // keyboard ready channel
+
 	Running bool
 }
 
@@ -104,11 +106,7 @@ func (a *ALU) handleTRAP(instr uint16) {
 	switch trapVector := subBits(instr, 7, 0); trapVector {
 	case TrapGETC:
 		// block until new character received
-		for {
-			if (a.Memory[KBSR] & 0x8000) != 0x0 {
-				break
-			}
-		}
+		<- a.KBSRChan
 		a.Reg[0] = a.Memory[KBDR]
 		a.Memory[KBSR] &= 0x7FFF
 	case TrapOUT:
@@ -125,11 +123,7 @@ func (a *ALU) handleTRAP(instr uint16) {
 	case TrapIN:
 		fmt.Print("Enter a character: ")
 		// block until new character received
-		for {
-			if (a.Memory[KBSR] & 0x8000) != 0x0 {
-				break
-			}
-		}
+		<- a.KBSRChan
 		a.Reg[0] = a.Memory[KBDR]
 		a.Memory[KBSR] &= 0x7FFF
 		fmt.Printf("%c", rune(a.Reg[0]))
@@ -289,6 +283,7 @@ func main() {
 	a := ALU{
 		PCReg:   PCStart,
 		Running: true,
+		KBSRChan: make(chan struct{}, 1),
 	}
 
 	if err := Load(&a.Memory, args[0]); err != nil {

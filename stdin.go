@@ -18,6 +18,12 @@ func processInput(a *ALU) {
         os.Stdin.Read(b)
 		a.Memory[KBSR] = 0x8000
 		a.Memory[KBDR] = uint16(b[0])
+
+		// send to KBSRChan in non-blocking way
+		select {
+			case a.KBSRChan <- struct{}{}:
+			default:
+		}
     }
 }
 
